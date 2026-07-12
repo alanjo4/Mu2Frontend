@@ -4,13 +4,32 @@ import { useAuth } from './AuthContext.tsx'
 import './App.css'
 
 type Language = 'es' | 'en'
-type RoutePath = '/' | '/login' | '/account' | '/buy-sylium' | '/downloads'
+type RoutePath = '/' | '/register' | '/account' | '/buy-sylium' | '/downloads'
 
 type NavKey = 'home' | 'server' | 'downloads' | 'discord'
 type AccountKey = 'account' | 'buySylium' | 'logout'
 type FeatureKey = 'classic' | 'fair' | 'community'
 type DownloadKey = 'client' | 'launcher' | 'support'
 type SyliumPackKey = 'starter' | 'adventurer' | 'founder'
+
+type RegisterResponse = {
+  user: {
+    accountGuid: number
+    username: string
+    email: string | null
+  }
+  tokens: {
+    accessToken: string
+    expiresIn: number
+  }
+}
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000/api'
+
+async function readApiMessage(response: Response) {
+  const payload = (await response.json().catch(() => null)) as { message?: string | string[] } | null
+  return Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message ?? `Request failed (${response.status})`
+}
 
 const copy = {
   es: {
@@ -19,18 +38,18 @@ const copy = {
     heroDescription:
       'Un servidor clasico de Mu Legend / Mu2 pensado para jugar con calma, competir con justicia y crecer junto a una comunidad activa.',
     menuLabel: 'Abrir navegacion',
-    login: 'Login',
+    login: 'Registro',
     playNow: 'JUGAR AHORA',
     downloadClient: 'Descargar cliente',
     accountMenuLabel: 'Abrir menu de cuenta',
     backHome: 'Volver al inicio',
-    loginTitle: 'Ingresar a Mu Sylium',
+    loginTitle: 'Crear cuenta en Mu Sylium',
     loginDescription:
-      'Accede a tu cuenta para revisar tu panel, gestionar Sylium y preparar el cliente antes de entrar al servidor.',
+      'Crea tu cuenta desde la web y despues ingresa al juego desde el launcher oficial.',
     emailLabel: 'Email',
     passwordLabel: 'Password',
-    loginSubmit: 'Ingresar',
-    loginNote: 'Login temporal de frontend: cualquier envio inicia la sesion demo.',
+    loginSubmit: 'Crear cuenta',
+    loginNote: 'El launcher usa estas credenciales para pedir el token de juego. El login al juego ya no se hace desde la web.',
     accountMenu: {
       account: 'Cuenta',
       buySylium: 'Buy Sylium',
@@ -70,8 +89,8 @@ const copy = {
     accountTitle: 'Panel de cuenta',
     accountDescription:
       'Desde aca vas a poder revisar tu estado, saldo y accesos principales. Por ahora dejamos la base visual lista para conectar con el backend.',
-    accountGuestTitle: 'Inicia sesion para ver tu cuenta',
-    accountGuestDescription: 'El panel queda preparado para mostrar datos reales cuando conectemos el sistema de cuentas.',
+    accountGuestTitle: 'Crea tu cuenta para ver tu panel',
+    accountGuestDescription: 'Despues del registro vas a poder revisar tu sesion web aca. El ingreso al juego se hace desde el launcher.',
     accountStats: [
       { label: 'Estado', value: 'Activa' },
       { label: 'Sylium', value: '0' },
@@ -128,18 +147,18 @@ const copy = {
     heroDescription:
       'A classic Mu Legend / Mu2 server built for steady progression, fair competition, and a growing community.',
     menuLabel: 'Open navigation',
-    login: 'Login',
+    login: 'Register',
     playNow: 'PLAY NOW',
     downloadClient: 'Download client',
     accountMenuLabel: 'Open account menu',
     backHome: 'Back home',
-    loginTitle: 'Log in to Mu Sylium',
+    loginTitle: 'Create your Mu Sylium account',
     loginDescription:
-      'Access your account to review your panel, manage Sylium, and prepare the client before entering the server.',
+      'Create your account on the web, then enter the game through the official launcher.',
     emailLabel: 'Email',
     passwordLabel: 'Password',
-    loginSubmit: 'Log in',
-    loginNote: 'Temporary frontend login: any submit starts the demo session.',
+    loginSubmit: 'Create account',
+    loginNote: 'The launcher uses these credentials to request the game token. Playing no longer starts from the web.',
     accountMenu: {
       account: 'Account',
       buySylium: 'Buy Sylium',
@@ -179,8 +198,8 @@ const copy = {
     accountTitle: 'Account panel',
     accountDescription:
       'From here you will be able to review your status, balance, and main account actions. The visual base is ready for backend data later.',
-    accountGuestTitle: 'Log in to view your account',
-    accountGuestDescription: 'The panel is prepared to show real account data once the account system is connected.',
+    accountGuestTitle: 'Create your account to view your panel',
+    accountGuestDescription: 'After registration you will be able to review your web session here. Entering the game happens from the launcher.',
     accountStats: [
       { label: 'Status', value: 'Active' },
       { label: 'Sylium', value: '0' },
@@ -294,14 +313,14 @@ const accountItems: ReadonlyArray<{ key: AccountKey; href?: string }> = [
   { key: 'buySylium', href: '/buy-sylium' },
   { key: 'logout' },
 ]
-const routePaths = new Set<RoutePath>(['/', '/login', '/account', '/buy-sylium', '/downloads'])
+const routePaths = new Set<RoutePath>(['/', '/register', '/account', '/buy-sylium', '/downloads'])
 
 function getRoutePath(pathname: string): RoutePath {
   return routePaths.has(pathname as RoutePath) ? (pathname as RoutePath) : '/'
 }
 
 function App() {
-  const { isAuthenticated, user, login, logout } = useAuth()
+  const { isAuthenticated, user, registerSession, logout } = useAuth()
   const [language, setLanguage] = useState<Language>('es')
   const [route, setRoute] = useState<RoutePath>(() => getRoutePath(window.location.pathname))
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -311,6 +330,14 @@ function App() {
   const backgroundPositionX = '20%'
   const backgroundPositionY = '20%'
   const t = copy[language]
+  const [registerForm, setRegisterForm] = useState({
+    username: '',
+    email: user?.email ?? '',
+    password: '',
+    confirmPassword: '',
+  })
+  const [registerState, setRegisterState] = useState<'idle' | 'submitting' | 'error'>('idle')
+  const [registerMessage, setRegisterMessage] = useState('')
   const userInitials = user?.name
     .split(' ')
     .map((part) => part[0])
@@ -390,13 +417,55 @@ function App() {
   }
 
   const handleLoginClick = () => {
-    navigate('/login')
+    navigate('/register')
   }
 
-  const handleLoginSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    login()
-    navigate('/account')
+    setRegisterMessage('')
+
+    const username = registerForm.username.trim()
+    const email = registerForm.email.trim()
+
+    if (registerForm.password !== registerForm.confirmPassword) {
+      setRegisterState('error')
+      setRegisterMessage(language === 'es' ? 'Las passwords no coinciden.' : 'Passwords do not match.')
+      return
+    }
+
+    setRegisterState('submitting')
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username,
+          email,
+          password: registerForm.password,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(await readApiMessage(response))
+      }
+
+      const payload = (await response.json()) as RegisterResponse
+      registerSession(payload)
+      setRegisterState('idle')
+      setRegisterForm({
+        username: payload.user.username,
+        email: payload.user.email ?? '',
+        password: '',
+        confirmPassword: '',
+      })
+      navigate('/account')
+    } catch (error) {
+      setRegisterState('error')
+      setRegisterMessage(error instanceof Error ? error.message : String(error))
+    }
   }
   const navigationBar = (
     <div
@@ -667,7 +736,7 @@ function App() {
       </div>
     </footer>
   )
-  if (route === '/login') {
+  if (route === '/register') {
     return (
       <main className='min-h-screen bg-[#02040a] text-white'>
         {navigationBar}
@@ -694,13 +763,27 @@ function App() {
 
             <div className='col-span-2 md:col-span-6 lg:col-span-5 lg:col-start-8'>
               <form onSubmit={handleLoginSubmit} className='border border-white/10 bg-[#08111f]/88 p-6 shadow-[0_24px_74px_rgba(0,0,0,0.32)]'>
-                <label className='block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='email'>
+                <label className='block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='username'>
+                  {language === 'es' ? 'Usuario' : 'Username'}
+                </label>
+                <input
+                  id='username'
+                  type='text'
+                  autoComplete='username'
+                  value={registerForm.username}
+                  onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, username: value })) }}
+                  className='mt-3 h-12 w-full border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
+                />
+
+                <label className='mt-5 block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='email'>
                   {t.emailLabel}
                 </label>
                 <input
                   id='email'
                   type='email'
-                  defaultValue={user?.email ?? 'aegon@musylium.com'}
+                  autoComplete='email'
+                  value={registerForm.email}
+                  onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, email: value })) }}
                   className='mt-3 h-12 w-full border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
                 />
 
@@ -710,16 +793,32 @@ function App() {
                 <input
                   id='password'
                   type='password'
-                  defaultValue='demo1234'
+                  autoComplete='new-password'
+                  value={registerForm.password}
+                  onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, password: value })) }}
+                  className='mt-3 h-12 w-full border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
+                />
+
+                <label className='mt-5 block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='confirmPassword'>
+                  {language === 'es' ? 'Confirmar password' : 'Confirm password'}
+                </label>
+                <input
+                  id='confirmPassword'
+                  type='password'
+                  autoComplete='new-password'
+                  value={registerForm.confirmPassword}
+                  onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, confirmPassword: value })) }}
                   className='mt-3 h-12 w-full border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
                 />
 
                 <button
                   type='submit'
-                  className='mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-linear-to-r from-[#e5c977] via-[#f1db95] to-[#b98a31] px-6 text-sm font-semibold tracking-[0.14em] text-[#1d1403] uppercase'
+                  disabled={registerState === 'submitting'}
+                  className='mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-linear-to-r from-[#e5c977] via-[#f1db95] to-[#b98a31] px-6 text-sm font-semibold tracking-[0.14em] text-[#1d1403] uppercase disabled:cursor-not-allowed disabled:opacity-70'
                 >
-                  {t.loginSubmit}
+                  {registerState === 'submitting' ? (language === 'es' ? 'Creando cuenta...' : 'Creating account...') : t.loginSubmit}
                 </button>
+                {registerMessage ? <p className='mt-4 text-sm leading-6 text-[#ffb6bc]'>{registerMessage}</p> : null}
                 <p className='mt-4 text-xs leading-6 text-white/48'>{t.loginNote}</p>
               </form>
             </div>
@@ -758,7 +857,7 @@ function App() {
                       <p className='mt-1 text-sm text-white/56'>{user?.email}</p>
                     </div>
                     <span className='inline-flex w-fit rounded-full border border-[#d8b45f]/40 px-4 py-2 text-xs tracking-[0.16em] text-[#ead38a] uppercase'>
-                      Mu Sylium ID
+                      {user ? `ID ${user.accountGuid}` : 'Mu Sylium ID'}
                     </span>
                   </div>
 
@@ -1293,6 +1392,10 @@ function App() {
 }
 
 export default App
+
+
+
+
 
 
 
