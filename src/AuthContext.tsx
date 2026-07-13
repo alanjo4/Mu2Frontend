@@ -7,6 +7,7 @@ type RegisterResponse = {
     accountGuid: number
     username: string
     email: string | null
+    grade?: number
   }
   tokens: {
     accessToken: string
@@ -18,6 +19,7 @@ type AuthUser = {
   accountGuid: number
   name: string
   email: string
+  grade: number
   accessToken: string
   expiresAt: number
 }
@@ -61,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           accountGuid: payload.user.accountGuid,
           name: payload.user.username,
           email: payload.user.email ?? '',
+          grade: payload.user.grade ?? 0,
           accessToken: payload.tokens.accessToken,
           expiresAt: Date.now() + payload.tokens.expiresIn * 1000,
         }

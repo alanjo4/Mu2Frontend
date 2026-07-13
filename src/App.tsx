@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import background from './assets/background.png'
 import { useAuth } from './AuthContext.tsx'
+import ShopPage from './ShopPage.tsx'
+import AdminPage, { isStaff } from './AdminPage.tsx'
 import './App.css'
 
 type Language = 'es' | 'en'
-type RoutePath = '/' | '/register' | '/account' | '/buy-sylium' | '/downloads'
+type RoutePath = '/' | '/register' | '/account' | '/buy-sylium' | '/downloads' | '/admin'
 
 type NavKey = 'home' | 'server' | 'downloads' | 'discord'
 type AccountKey = 'account' | 'buySylium' | 'logout'
@@ -17,6 +19,7 @@ type RegisterResponse = {
     accountGuid: number
     username: string
     email: string | null
+    grade?: number
   }
   tokens: {
     accessToken: string
@@ -31,10 +34,117 @@ async function readApiMessage(response: Response) {
   return Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message ?? `Request failed (${response.status})`
 }
 
+type NewsItem = {
+  id: number
+  title: string
+  body: string
+  image_url: string | null
+  created_at: string
+}
+
+function formatNewsDate(value: string, language: Language): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+const landingExtra = {
+  es: {
+    statusOnline: 'Servidor en linea',
+    heroPrimary: 'Descargar y jugar',
+    newsTag: 'Novedades',
+    newsTitle: 'Ultimas novedades',
+    newsSubtitle: 'Parches, eventos y anuncios del servidor.',
+    newsEmpty: 'Todavia no hay novedades publicadas. Sumate al Discord para enterarte primero.',
+    newsError: 'No se pudieron cargar las novedades en este momento.',
+    infoTag: 'El servidor',
+    infoTitle: 'Pensado para durar',
+    infoItems: [
+      { value: 'x1', label: 'Rates clasicas de progresion' },
+      { value: 'Solo cosmetico', label: 'La tienda no vende poder' },
+      { value: '24/7', label: 'Servidor siempre disponible' },
+      { value: 'Anti-cheat', label: 'Competencia limpia' },
+    ],
+    signInCta: 'Ingresar',
+    signInTab: 'Iniciar sesion',
+    signUpTab: 'Crear cuenta',
+    signInTitle: 'Ingresa a tu cuenta',
+    signInDescription: 'Inicia sesion para ver tu cuenta, comprar Sylium y gestionar tus compras.',
+    signInSubmit: 'Iniciar sesion',
+    signInLoading: 'Ingresando...',
+    toggleToRegister: 'No tenes cuenta? Crea una',
+    toggleToLogin: 'Ya tenes cuenta? Inicia sesion',
+    adminMenu: 'Admin',
+  },
+  en: {
+    statusOnline: 'Server online',
+    heroPrimary: 'Download and play',
+    newsTag: 'News',
+    newsTitle: 'Latest news',
+    newsSubtitle: 'Patches, events, and server announcements.',
+    newsEmpty: 'No news published yet. Join the Discord to be the first to know.',
+    newsError: 'News could not be loaded right now.',
+    infoTag: 'The server',
+    infoTitle: 'Built to last',
+    infoItems: [
+      { value: 'x1', label: 'Classic progression rates' },
+      { value: 'Cosmetic only', label: 'The shop never sells power' },
+      { value: '24/7', label: 'Always-on server' },
+      { value: 'Anti-cheat', label: 'Clean competition' },
+    ],
+    signInCta: 'Sign in',
+    signInTab: 'Sign in',
+    signUpTab: 'Create account',
+    signInTitle: 'Sign in to your account',
+    signInDescription: 'Sign in to view your account, buy Sylium, and manage your purchases.',
+    signInSubmit: 'Sign in',
+    signInLoading: 'Signing in...',
+    toggleToRegister: "Don't have an account? Create one",
+    toggleToLogin: 'Already have an account? Sign in',
+    adminMenu: 'Admin',
+  },
+} satisfies Record<
+  Language,
+  {
+    statusOnline: string
+    heroPrimary: string
+    newsTag: string
+    newsTitle: string
+    newsSubtitle: string
+    newsEmpty: string
+    newsError: string
+    infoTag: string
+    infoTitle: string
+    infoItems: ReadonlyArray<{ value: string; label: string }>
+    signInCta: string
+    signInTab: string
+    signUpTab: string
+    signInTitle: string
+    signInDescription: string
+    signInSubmit: string
+    signInLoading: string
+    toggleToRegister: string
+    toggleToLogin: string
+    adminMenu: string
+  }
+>
+
+const featureIcons: Record<FeatureKey, string> = {
+  classic:
+    'M12 3l7 4v5c0 4.42-3.05 8.28-7 9-3.95-.72-7-4.58-7-9V7l7-4Zm0 4.2L9.2 12h1.9v3.6L14.8 11h-1.9V7.2Z',
+  fair: 'M12 3l2.4 4.86 5.36.78-3.88 3.78.92 5.34L12 15.9 7.2 17.7l.92-5.34L4.24 8.64l5.36-.78L12 3Z',
+  community:
+    'M8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm8 0a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm-8 2c-2.67 0-5 1.34-5 3.5V19h8v-2.5c0-.9.4-1.7 1.05-2.32A8.4 8.4 0 0 0 8 13Zm8 0a6.9 6.9 0 0 0-1.9.27A4.3 4.3 0 0 1 16 16.5V19h5v-2.5c0-2.16-2.33-3.5-5-3.5Z',
+}
+
 const copy = {
   es: {
     serverLabel: 'Mu2 Server',
-    heroTitle: 'Mu Sylium',
+    heroTitle: 'Mu Syliums',
     heroDescription:
       'Un servidor clasico de Mu Legend / Mu2 pensado para jugar con calma, competir con justicia y crecer junto a una comunidad activa.',
     menuLabel: 'Abrir navegacion',
@@ -43,7 +153,7 @@ const copy = {
     downloadClient: 'Descargar cliente',
     accountMenuLabel: 'Abrir menu de cuenta',
     backHome: 'Volver al inicio',
-    loginTitle: 'Crear cuenta en Mu Sylium',
+    loginTitle: 'Crear cuenta en Mu Syliums',
     loginDescription:
       'Crea tu cuenta desde la web y despues ingresa al juego desde el launcher oficial.',
     emailLabel: 'Email',
@@ -68,7 +178,7 @@ const copy = {
     ],
     featureTitle: 'La experiencia clasica, cuidada para jugar justo',
     featureDescription:
-      'Mu Sylium nace para quienes quieren volver a sentir el progreso real: subir, farmear, comerciar, hacer grupo y competir sin que la tienda decida la partida.',
+      'Mu Syliums nace para quienes quieren volver a sentir el progreso real: subir, farmear, comerciar, hacer grupo y competir sin que la tienda decida la partida.',
     features: {
       classic: {
         title: 'Servidor clasico',
@@ -116,7 +226,7 @@ const copy = {
     downloads: {
       client: {
         title: 'Cliente completo',
-        description: 'Instalador principal de Mu Sylium para Windows.',
+        description: 'Instalador principal de Mu Syliums para Windows.',
         meta: 'Recomendado para nuevos jugadores',
         action: 'Descargar cliente',
       },
@@ -139,11 +249,11 @@ const copy = {
     discordDescription:
       'El Discord es el punto de encuentro para anuncios, soporte, feedback y organizacion de grupos. La comunidad todavia esta creciendo, y ese es el mejor momento para entrar.',
     discordCta: 'Entrar a Discord',
-    footerText: 'Mu Sylium es un proyecto de comunidad para jugadores de Mu Legend / Mu2.',
+    footerText: 'Mu Syliums es un proyecto de comunidad para jugadores de Mu Legend / Mu2.',
   },
   en: {
     serverLabel: 'Mu2 Server',
-    heroTitle: 'Mu Sylium',
+    heroTitle: 'Mu Syliums',
     heroDescription:
       'A classic Mu Legend / Mu2 server built for steady progression, fair competition, and a growing community.',
     menuLabel: 'Open navigation',
@@ -152,7 +262,7 @@ const copy = {
     downloadClient: 'Download client',
     accountMenuLabel: 'Open account menu',
     backHome: 'Back home',
-    loginTitle: 'Create your Mu Sylium account',
+    loginTitle: 'Create your Mu Syliums account',
     loginDescription:
       'Create your account on the web, then enter the game through the official launcher.',
     emailLabel: 'Email',
@@ -177,7 +287,7 @@ const copy = {
     ],
     featureTitle: 'The classic experience, tuned for fair play',
     featureDescription:
-      'Mu Sylium is for players who want real progression again: leveling, farming, trading, grouping, and competing without the shop deciding the outcome.',
+      'Mu Syliums is for players who want real progression again: leveling, farming, trading, grouping, and competing without the shop deciding the outcome.',
     features: {
       classic: {
         title: 'Classic server',
@@ -225,7 +335,7 @@ const copy = {
     downloads: {
       client: {
         title: 'Full client',
-        description: 'Main Mu Sylium installer for Windows.',
+        description: 'Main Mu Syliums installer for Windows.',
         meta: 'Recommended for new players',
         action: 'Download client',
       },
@@ -248,7 +358,7 @@ const copy = {
     discordDescription:
       'Discord is the place for announcements, support, feedback, and party organization. The community is still growing, and that is the best time to join.',
     discordCta: 'Join Discord',
-    footerText: 'Mu Sylium is a community project for Mu Legend / Mu2 players.',
+    footerText: 'Mu Syliums is a community project for Mu Legend / Mu2 players.',
   },
 } satisfies Record<
   Language,
@@ -305,15 +415,14 @@ const navItems: ReadonlyArray<{ key: NavKey; href: string }> = [
 ]
 
 const featureKeys: ReadonlyArray<FeatureKey> = ['classic', 'fair', 'community']
-const downloadKeys: ReadonlyArray<DownloadKey> = ['client', 'launcher', 'support']
-const syliumPackKeys: ReadonlyArray<SyliumPackKey> = ['starter', 'adventurer', 'founder']
+const downloadKeys: ReadonlyArray<DownloadKey> = ['client', 'launcher']
 
 const accountItems: ReadonlyArray<{ key: AccountKey; href?: string }> = [
   { key: 'account', href: '/account' },
   { key: 'buySylium', href: '/buy-sylium' },
   { key: 'logout' },
 ]
-const routePaths = new Set<RoutePath>(['/', '/register', '/account', '/buy-sylium', '/downloads'])
+const routePaths = new Set<RoutePath>(['/', '/register', '/account', '/buy-sylium', '/downloads', '/admin'])
 
 function getRoutePath(pathname: string): RoutePath {
   return routePaths.has(pathname as RoutePath) ? (pathname as RoutePath) : '/'
@@ -330,6 +439,9 @@ function App() {
   const backgroundPositionX = '20%'
   const backgroundPositionY = '20%'
   const t = copy[language]
+  const te = landingExtra[language]
+  const [news, setNews] = useState<NewsItem[]>([])
+  const [newsState, setNewsState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [registerForm, setRegisterForm] = useState({
     username: '',
     email: user?.email ?? '',
@@ -338,12 +450,25 @@ function App() {
   })
   const [registerState, setRegisterState] = useState<'idle' | 'submitting' | 'error'>('idle')
   const [registerMessage, setRegisterMessage] = useState('')
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const userInitials = user?.name
     .split(' ')
     .map((part) => part[0])
     .join('')
     .slice(0, 2)
     .toUpperCase()
+
+  // Account dropdown entries, with an Admin link prepended for staff (GM/DEV).
+  const menuItems: ReadonlyArray<{ key: string; href?: string; label: string }> = [
+    ...(isStaff(user?.grade)
+      ? [{ key: 'admin', href: '/admin', label: te.adminMenu }]
+      : []),
+    ...accountItems.map((item) => ({
+      key: item.key as string,
+      href: item.href,
+      label: t.accountMenu[item.key],
+    })),
+  ]
 
 
   useEffect(() => {
@@ -387,6 +512,31 @@ function App() {
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const loadNews = async () => {
+      setNewsState('loading')
+      try {
+        const response = await fetch(`${apiBaseUrl}/news`)
+        if (!response.ok) throw new Error(await readApiMessage(response))
+        const payload = (await response.json()) as NewsItem[]
+        if (cancelled) return
+        setNews(Array.isArray(payload) ? payload : [])
+        setNewsState('ready')
+      } catch {
+        if (cancelled) return
+        setNews([])
+        setNewsState('error')
+      }
+    }
+
+    void loadNews()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const navigate = (href: string) => {
     const url = new URL(href, window.location.origin)
     const nextRoute = getRoutePath(url.pathname)
@@ -417,6 +567,9 @@ function App() {
   }
 
   const handleLoginClick = () => {
+    setAuthMode('login')
+    setRegisterState('idle')
+    setRegisterMessage('')
     navigate('/register')
   }
 
@@ -427,7 +580,7 @@ function App() {
     const username = registerForm.username.trim()
     const email = registerForm.email.trim()
 
-    if (registerForm.password !== registerForm.confirmPassword) {
+    if (authMode === 'register' && registerForm.password !== registerForm.confirmPassword) {
       setRegisterState('error')
       setRegisterMessage(language === 'es' ? 'Las passwords no coinciden.' : 'Passwords do not match.')
       return
@@ -435,17 +588,19 @@ function App() {
 
     setRegisterState('submitting')
 
+    const endpoint = authMode === 'register' ? '/auth/register' : '/auth/login'
+    const body =
+      authMode === 'register'
+        ? { username, email, password: registerForm.password }
+        : { username, password: registerForm.password }
+
     try {
-      const response = await fetch(`${apiBaseUrl}/auth/register`, {
+      const response = await fetch(`${apiBaseUrl}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          username,
-          email,
-          password: registerForm.password,
-        }),
+        body: JSON.stringify(body),
       })
 
       if (!response.ok) {
@@ -483,10 +638,10 @@ function App() {
                 href='/'
                 onClick={(event) => handleInternalLink(event, '/')}
                 className='group inline-flex items-center transition-opacity duration-300 hover:opacity-90'
-                aria-label='Go to Mu Sylium home'
+                aria-label='Go to Mu Syliums home'
               >
                 <span className='font-medieval bg-linear-to-b from-[#f4edd8] via-[#ded3b6] to-[#c7b184] bg-clip-text text-3xl tracking-[0.04em] text-transparent sm:text-4xl'>
-                  Mu Sylium
+                  Mu Syliums
                 </span>
               </a>
 
@@ -561,7 +716,7 @@ function App() {
                       }`}
                     >
                       <ul className='space-y-1'>
-                        {accountItems.map((item) => (
+                        {menuItems.map((item) => (
                           <li key={item.key}>
                             {item.key === 'logout' ? (
                               <button
@@ -569,7 +724,7 @@ function App() {
                                 onClick={handleLogout}
                                 className='flex w-full items-center rounded-xl px-4 py-3 text-left text-sm text-white/82 transition-colors hover:bg-white/[0.08]'
                               >
-                                {t.accountMenu[item.key]}
+                                {item.label}
                               </button>
                             ) : (
                               <a
@@ -577,7 +732,7 @@ function App() {
                                 onClick={(event) => handleInternalLink(event, item.href ?? '/')}
                                 className='flex items-center rounded-xl px-4 py-3 text-sm text-white/82 transition-colors hover:bg-white/[0.08]'
                               >
-                                {t.accountMenu[item.key]}
+                                {item.label}
                               </a>
                             )}
                           </li>
@@ -591,7 +746,7 @@ function App() {
                       type='button'
                       onClick={handleLoginClick}
                       className='inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 text-sm text-white uppercase backdrop-blur-md transition-colors hover:bg-white/10 min-[1440px]:px-5'
-                      aria-label={t.login}
+                      aria-label={te.signInCta}
                     >
                       <svg aria-hidden='true' viewBox='0 0 24 24' className='h-4 w-4 stroke-current' fill='none'>
                         <path
@@ -601,7 +756,7 @@ function App() {
                           strokeLinejoin='round'
                         />
                       </svg>
-                      <span className='hidden tracking-[0.18em] min-[1440px]:inline'>{t.login}</span>
+                      <span className='hidden tracking-[0.18em] min-[1440px]:inline'>{te.signInCta}</span>
                     </button>
                     <a
                       href='/downloads'
@@ -686,7 +841,7 @@ function App() {
                       <div className='rounded-[1.25rem] border border-white/8 bg-white/[0.03] p-2'>
                         <div className='px-3 py-2 text-sm text-white/58'>{user?.email}</div>
                         <ul className='space-y-1'>
-                          {accountItems.map((item) => (
+                          {menuItems.map((item) => (
                             <li key={item.key}>
                               {item.key === 'logout' ? (
                                 <button
@@ -694,7 +849,7 @@ function App() {
                                   onClick={handleLogout}
                                   className='flex w-full items-center rounded-xl px-3 py-3 text-left text-sm text-white/82 transition-colors hover:bg-white/[0.08]'
                                 >
-                                  {t.accountMenu[item.key]}
+                                  {item.label}
                                 </button>
                               ) : (
                                 <a
@@ -702,7 +857,7 @@ function App() {
                                   onClick={(event) => handleInternalLink(event, item.href ?? '/')}
                                   className='flex items-center rounded-xl px-3 py-3 text-sm text-white/82 transition-colors hover:bg-white/[0.08]'
                                 >
-                                  {t.accountMenu[item.key]}
+                                  {item.label}
                                 </a>
                               )}
                             </li>
@@ -715,7 +870,7 @@ function App() {
                         onClick={handleLoginClick}
                         className='inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white/12 bg-white/6 px-5 text-sm tracking-[0.18em] text-white uppercase backdrop-blur-md transition-colors hover:bg-white/10'
                       >
-                        {t.login}
+                        {te.signInCta}
                       </button>
                     )}
                   </div>
@@ -732,7 +887,7 @@ function App() {
     <footer className='border-t border-white/8 py-8'>
       <div className='page-shell flex flex-col gap-3 text-sm text-white/48 md:flex-row md:items-center md:justify-between'>
         <p>{t.footerText}</p>
-        <p className='font-medieval text-xl text-white/68'>Mu Sylium</p>
+        <p className='font-medieval text-xl text-white/68'>Mu Syliums</p>
       </div>
     </footer>
   )
@@ -748,10 +903,10 @@ function App() {
                 onClick={(event) => handleInternalLink(event, '/')}
                 className='font-medieval bg-linear-to-b from-[#f4edd8] via-[#ded3b6] to-[#c7b184] bg-clip-text text-4xl text-transparent'
               >
-                Mu Sylium
+                Mu Syliums
               </a>
-              <h1 className='font-medieval mt-8 text-5xl leading-tight'>{t.loginTitle}</h1>
-              <p className='mt-5 text-base leading-8 text-white/70'>{t.loginDescription}</p>
+              <h1 className='font-medieval mt-8 text-5xl leading-tight'>{authMode === 'register' ? t.loginTitle : te.signInTitle}</h1>
+              <p className='mt-5 text-base leading-8 text-white/70'>{authMode === 'register' ? t.loginDescription : te.signInDescription}</p>
               <a
                 href='/'
                 onClick={(event) => handleInternalLink(event, '/')}
@@ -762,7 +917,24 @@ function App() {
             </div>
 
             <div className='col-span-2 md:col-span-6 lg:col-span-5 lg:col-start-8'>
-              <form onSubmit={handleLoginSubmit} className='border border-white/10 bg-[#08111f]/88 p-6 shadow-[0_24px_74px_rgba(0,0,0,0.32)]'>
+              <form onSubmit={handleLoginSubmit} className='rounded-2xl border border-white/10 bg-[#08111f]/88 p-6 shadow-[0_24px_74px_rgba(0,0,0,0.32)]'>
+                <div className='mb-6 grid grid-cols-2 gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1'>
+                  {(['login', 'register'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type='button'
+                      onClick={() => { setAuthMode(mode); setRegisterState('idle'); setRegisterMessage('') }}
+                      className={`min-h-10 rounded-full text-xs font-semibold tracking-[0.14em] uppercase transition-colors ${
+                        authMode === mode
+                          ? 'bg-linear-to-r from-[#e5c977] to-[#b98a31] text-[#1d1403]'
+                          : 'text-white/58 hover:text-white'
+                      }`}
+                    >
+                      {mode === 'login' ? te.signInTab : te.signUpTab}
+                    </button>
+                  ))}
+                </div>
+
                 <label className='block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='username'>
                   {language === 'es' ? 'Usuario' : 'Username'}
                 </label>
@@ -772,20 +944,24 @@ function App() {
                   autoComplete='username'
                   value={registerForm.username}
                   onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, username: value })) }}
-                  className='mt-3 h-12 w-full border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
+                  className='mt-3 h-12 w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
                 />
 
-                <label className='mt-5 block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='email'>
-                  {t.emailLabel}
-                </label>
-                <input
-                  id='email'
-                  type='email'
-                  autoComplete='email'
-                  value={registerForm.email}
-                  onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, email: value })) }}
-                  className='mt-3 h-12 w-full border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
-                />
+                {authMode === 'register' ? (
+                  <>
+                    <label className='mt-5 block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='email'>
+                      {t.emailLabel}
+                    </label>
+                    <input
+                      id='email'
+                      type='email'
+                      autoComplete='email'
+                      value={registerForm.email}
+                      onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, email: value })) }}
+                      className='mt-3 h-12 w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
+                    />
+                  </>
+                ) : null}
 
                 <label className='mt-5 block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='password'>
                   {t.passwordLabel}
@@ -793,33 +969,48 @@ function App() {
                 <input
                   id='password'
                   type='password'
-                  autoComplete='new-password'
+                  autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
                   value={registerForm.password}
                   onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, password: value })) }}
-                  className='mt-3 h-12 w-full border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
+                  className='mt-3 h-12 w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
                 />
 
-                <label className='mt-5 block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='confirmPassword'>
-                  {language === 'es' ? 'Confirmar password' : 'Confirm password'}
-                </label>
-                <input
-                  id='confirmPassword'
-                  type='password'
-                  autoComplete='new-password'
-                  value={registerForm.confirmPassword}
-                  onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, confirmPassword: value })) }}
-                  className='mt-3 h-12 w-full border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
-                />
+                {authMode === 'register' ? (
+                  <>
+                    <label className='mt-5 block text-xs tracking-[0.18em] text-white/52 uppercase' htmlFor='confirmPassword'>
+                      {language === 'es' ? 'Confirmar password' : 'Confirm password'}
+                    </label>
+                    <input
+                      id='confirmPassword'
+                      type='password'
+                      autoComplete='new-password'
+                      value={registerForm.confirmPassword}
+                      onChange={(event) => { const value = event.currentTarget.value; setRegisterForm((current) => ({ ...current, confirmPassword: value })) }}
+                      className='mt-3 h-12 w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 text-white outline-none transition-colors focus:border-[#d8b45f]/60'
+                    />
+                  </>
+                ) : null}
 
                 <button
                   type='submit'
                   disabled={registerState === 'submitting'}
                   className='mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-linear-to-r from-[#e5c977] via-[#f1db95] to-[#b98a31] px-6 text-sm font-semibold tracking-[0.14em] text-[#1d1403] uppercase disabled:cursor-not-allowed disabled:opacity-70'
                 >
-                  {registerState === 'submitting' ? (language === 'es' ? 'Creando cuenta...' : 'Creating account...') : t.loginSubmit}
+                  {registerState === 'submitting'
+                    ? authMode === 'register'
+                      ? language === 'es' ? 'Creando cuenta...' : 'Creating account...'
+                      : te.signInLoading
+                    : authMode === 'register' ? t.loginSubmit : te.signInSubmit}
                 </button>
                 {registerMessage ? <p className='mt-4 text-sm leading-6 text-[#ffb6bc]'>{registerMessage}</p> : null}
-                <p className='mt-4 text-xs leading-6 text-white/48'>{t.loginNote}</p>
+                <button
+                  type='button'
+                  onClick={() => { setAuthMode((mode) => (mode === 'register' ? 'login' : 'register')); setRegisterState('idle'); setRegisterMessage('') }}
+                  className='mt-5 w-full text-center text-xs tracking-[0.08em] text-white/58 uppercase transition-colors hover:text-[#ead38a]'
+                >
+                  {authMode === 'register' ? te.toggleToLogin : te.toggleToRegister}
+                </button>
+                {authMode === 'register' ? <p className='mt-4 text-xs leading-6 text-white/48'>{t.loginNote}</p> : null}
               </form>
             </div>
           </div>
@@ -835,7 +1026,7 @@ function App() {
         {navigationBar}
         <section className='page-shell pt-28 pb-16 md:pt-32 md:pb-24'>
           <a href='/' onClick={(event) => handleInternalLink(event, '/')} className='font-medieval text-3xl text-[#ead38a]'>
-            Mu Sylium
+            Mu Syliums
           </a>
           <div className='page-grid mt-12 items-center gap-y-8'>
             <div className='col-span-2 md:col-span-6 lg:col-span-5'>
@@ -857,7 +1048,7 @@ function App() {
                       <p className='mt-1 text-sm text-white/56'>{user?.email}</p>
                     </div>
                     <span className='inline-flex w-fit rounded-full border border-[#d8b45f]/40 px-4 py-2 text-xs tracking-[0.16em] text-[#ead38a] uppercase'>
-                      {user ? `ID ${user.accountGuid}` : 'Mu Sylium ID'}
+                      {user ? `ID ${user.accountGuid}` : 'Mu Syliums ID'}
                     </span>
                   </div>
 
@@ -881,7 +1072,7 @@ function App() {
                 </div>
               ) : (
                 <button type='button' onClick={handleLoginClick} className='inline-flex min-h-12 w-full items-center justify-center rounded-full bg-linear-to-r from-[#e5c977] via-[#f1db95] to-[#b98a31] px-6 text-sm font-semibold tracking-[0.14em] text-[#1d1403] uppercase'>
-                  {t.login}
+                  {te.signInCta}
                 </button>
               )}
             </div>
@@ -896,54 +1087,28 @@ function App() {
     return (
       <main className='min-h-screen bg-[#02040a] text-white'>
         {navigationBar}
-        <section className='page-shell pt-28 pb-16 md:pt-32 md:pb-24'>
-          <a href='/' onClick={(event) => handleInternalLink(event, '/')} className='font-medieval text-3xl text-[#ead38a]'>
-            Mu Sylium
-          </a>
-          <div className='page-grid mt-12 gap-y-10'>
-            <div className='col-span-2 md:col-span-6 lg:col-span-5'>
-              <p className='text-sm tracking-[0.26em] text-[#d8b45f] uppercase'>{t.accountMenu.buySylium}</p>
-              <h1 className='font-medieval mt-4 text-4xl leading-tight md:text-5xl'>{t.syliumTitle}</h1>
-              <p className='mt-5 text-base leading-8 text-white/70'>{t.syliumDescription}</p>
-              {!isAuthenticated ? (
-                <button type='button' onClick={handleLoginClick} className='mt-7 inline-flex min-h-12 items-center justify-center rounded-full bg-linear-to-r from-[#e5c977] via-[#f1db95] to-[#b98a31] px-6 text-sm font-semibold tracking-[0.14em] text-[#1d1403] uppercase'>
-                  {t.login}
-                </button>
-              ) : null}
-            </div>
+        <ShopPage
+          language={language}
+          isAuthenticated={isAuthenticated}
+          accessToken={user?.accessToken ?? null}
+          onLoginClick={handleLoginClick}
+        />
+        {siteFooter}
+    </main>
+    )
+  }
 
-            <div className='col-span-2 md:col-span-6 lg:col-span-6 lg:col-start-7'>
-              <div className='border border-[#d8b45f]/24 bg-[#d8b45f]/8 p-6'>
-                <ul className='space-y-4'>
-                  {t.syliumPolicy.map((item) => (
-                    <li key={item} className='flex items-center gap-3 text-sm text-white/78'>
-                      <span className='h-2 w-2 shrink-0 rounded-full bg-[#d8b45f]' />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            <div className='col-span-2 grid gap-4 md:col-span-6 md:grid-cols-3 lg:col-span-12'>
-              {syliumPackKeys.map((key) => {
-                const pack = t.syliumPacks[key]
-
-                return (
-                  <article key={key} className='border border-white/10 bg-white/[0.035] p-6 shadow-[0_16px_54px_rgba(0,0,0,0.18)]'>
-                    <p className='text-sm tracking-[0.2em] text-[#d8b45f] uppercase'>{pack.name}</p>
-                    <h3 className='font-medieval mt-4 text-3xl'>{pack.amount}</h3>
-                    <p className='mt-2 text-xl font-semibold text-[#ead38a]'>{pack.price}</p>
-                    <p className='mt-4 min-h-14 text-sm leading-7 text-white/64'>{pack.note}</p>
-                    <button type='button' disabled className='mt-6 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 text-xs tracking-[0.14em] text-white/42 uppercase'>
-                      {t.buyDisabled}
-                    </button>
-                  </article>
-                )
-              })}
-            </div>
-          </div>
-        </section>
+  if (route === '/admin') {
+    return (
+      <main className='min-h-screen bg-[#02040a] text-white'>
+        {navigationBar}
+        <AdminPage
+          language={language}
+          isAuthenticated={isAuthenticated}
+          grade={user?.grade ?? 0}
+          accessToken={user?.accessToken ?? null}
+          onLoginClick={handleLoginClick}
+        />
         {siteFooter}
     </main>
     )
@@ -955,7 +1120,7 @@ function App() {
         {navigationBar}
         <section className='page-shell pt-28 pb-16 md:pt-32 md:pb-24'>
           <a href='/' onClick={(event) => handleInternalLink(event, '/')} className='font-medieval text-3xl text-[#ead38a]'>
-            Mu Sylium
+            Mu Syliums
           </a>
           <div className='page-grid mt-12 gap-y-10'>
             <div className='col-span-2 md:col-span-6 lg:col-span-5'>
@@ -1036,10 +1201,10 @@ function App() {
                     href='/'
                     onClick={(event) => handleInternalLink(event, '/')}
                     className='group inline-flex items-center transition-opacity duration-300 hover:opacity-90'
-                    aria-label='Go to Mu Sylium home'
+                    aria-label='Go to Mu Syliums home'
                   >
                     <span className='font-medieval bg-linear-to-b from-[#f4edd8] via-[#ded3b6] to-[#c7b184] bg-clip-text text-3xl tracking-[0.04em] text-transparent sm:text-4xl'>
-                      Mu Sylium
+                      Mu Syliums
                     </span>
                   </a>
 
@@ -1119,7 +1284,7 @@ function App() {
                           }`}
                         >
                           <ul className='space-y-1'>
-                            {accountItems.map((item) => (
+                            {menuItems.map((item) => (
                               <li key={item.key}>
                                 {item.key === 'logout' ? (
                                   <button
@@ -1127,7 +1292,7 @@ function App() {
                                     onClick={handleLogout}
                                     className='flex w-full items-center rounded-xl px-4 py-3 text-left text-sm text-white/82 transition-colors hover:bg-white/[0.08]'
                                   >
-                                    {t.accountMenu[item.key]}
+                                    {item.label}
                                   </button>
                                 ) : (
                                   <a
@@ -1135,7 +1300,7 @@ function App() {
                                     onClick={(event) => handleInternalLink(event, item.href ?? '/')}
                                     className='flex items-center rounded-xl px-4 py-3 text-sm text-white/82 transition-colors hover:bg-white/[0.08]'
                                   >
-                                    {t.accountMenu[item.key]}
+                                    {item.label}
                                   </a>
                                 )}
                               </li>
@@ -1149,7 +1314,7 @@ function App() {
                           type='button'
                           onClick={handleLoginClick}
                           className='inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 text-sm text-white uppercase backdrop-blur-md transition-colors hover:bg-white/10 min-[1440px]:px-5'
-                          aria-label={t.login}
+                          aria-label={te.signInCta}
                         >
                           <svg aria-hidden='true' viewBox='0 0 24 24' className='h-4 w-4 stroke-current' fill='none'>
                             <path
@@ -1159,7 +1324,7 @@ function App() {
                               strokeLinejoin='round'
                             />
                           </svg>
-                          <span className='hidden tracking-[0.18em] min-[1440px]:inline'>{t.login}</span>
+                          <span className='hidden tracking-[0.18em] min-[1440px]:inline'>{te.signInCta}</span>
                         </button>
                         <a
                           href='/downloads' onClick={(event) => handleInternalLink(event, '/downloads')}
@@ -1247,7 +1412,7 @@ function App() {
                           <div className='rounded-[1.25rem] border border-white/8 bg-white/[0.03] p-2'>
                             <div className='px-3 py-2 text-sm text-white/58'>{user?.email}</div>
                             <ul className='space-y-1'>
-                              {accountItems.map((item) => (
+                              {menuItems.map((item) => (
                                 <li key={item.key}>
                                   {item.key === 'logout' ? (
                                     <button
@@ -1255,7 +1420,7 @@ function App() {
                                       onClick={handleLogout}
                                       className='flex w-full items-center rounded-xl px-3 py-3 text-left text-sm text-white/82 transition-colors hover:bg-white/[0.08]'
                                     >
-                                      {t.accountMenu[item.key]}
+                                      {item.label}
                                     </button>
                                   ) : (
                                     <a
@@ -1263,7 +1428,7 @@ function App() {
                                       onClick={(event) => handleInternalLink(event, item.href ?? '/')}
                                       className='flex items-center rounded-xl px-3 py-3 text-sm text-white/82 transition-colors hover:bg-white/[0.08]'
                                     >
-                                      {t.accountMenu[item.key]}
+                                      {item.label}
                                     </a>
                                   )}
                                 </li>
@@ -1276,7 +1441,7 @@ function App() {
                             onClick={handleLoginClick}
                             className='inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white/12 bg-white/6 px-5 text-sm tracking-[0.18em] text-white uppercase backdrop-blur-md transition-colors hover:bg-white/10'
                           >
-                            {t.login}
+                            {te.signInCta}
                           </button>
                         )}
                       </div>
@@ -1291,17 +1456,29 @@ function App() {
         <div className='page-shell relative z-10 flex min-h-[640px] items-center pt-[92px] text-white md:min-h-[680px] md:pt-[104px]'>
           <div className='page-grid w-full items-end gap-y-10'>
             <div className='col-span-2 max-w-3xl md:col-span-5 lg:col-span-6'>
-              <p className='text-sm tracking-[0.35em] text-white/70 uppercase'>{t.serverLabel}</p>
-              <h1 className='font-medieval mt-4 text-5xl leading-tight text-white sm:text-6xl md:text-7xl'>
+              <div className='flex flex-wrap items-center gap-3'>
+                <span className='inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs tracking-[0.16em] text-emerald-200 uppercase'>
+                  <span className='relative flex h-2 w-2'>
+                    <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70' />
+                    <span className='relative inline-flex h-2 w-2 rounded-full bg-emerald-400' />
+                  </span>
+                  {te.statusOnline}
+                </span>
+                <span className='text-sm tracking-[0.35em] text-white/70 uppercase'>{t.serverLabel}</span>
+              </div>
+              <h1 className='font-medieval mt-5 text-5xl leading-tight text-white sm:text-6xl md:text-7xl'>
                 {t.heroTitle}
               </h1>
               <p className='mt-5 max-w-2xl text-base leading-8 text-white/80 sm:text-lg'>{t.heroDescription}</p>
               <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
                 <a
                   href='/downloads' onClick={(event) => handleInternalLink(event, '/downloads')}
-                  className='inline-flex min-h-12 items-center justify-center rounded-full bg-linear-to-r from-[#e5c977] via-[#f1db95] to-[#b98a31] px-6 text-sm font-semibold tracking-[0.14em] text-[#1d1403] uppercase shadow-[0_14px_36px_rgba(191,143,45,0.28)] transition-transform duration-300 hover:scale-[1.02]'
+                  className='inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-linear-to-r from-[#e5c977] via-[#f1db95] to-[#b98a31] px-6 text-sm font-semibold tracking-[0.14em] text-[#1d1403] uppercase shadow-[0_14px_36px_rgba(191,143,45,0.28)] transition-transform duration-300 hover:scale-[1.02]'
                 >
-                  {t.downloadClient}
+                  <svg aria-hidden='true' viewBox='0 0 24 24' className='h-4 w-4 fill-current'>
+                    <path d='M12 3a1 1 0 0 1 1 1v8.59l2.3-2.3a1 1 0 0 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1Zm-7 15a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1Z' />
+                  </svg>
+                  {te.heroPrimary}
                 </a>
                 <a
                   href='/#discord' onClick={(event) => handleInternalLink(event, '/#discord')}
@@ -1338,33 +1515,94 @@ function App() {
 
           <div className='col-span-2 grid gap-4 md:col-span-6 md:grid-cols-3 lg:col-span-12'>
             {featureKeys.map((key) => (
-              <article key={key} className='min-h-56 border border-white/10 bg-white/[0.035] p-6 shadow-[0_16px_54px_rgba(0,0,0,0.18)]'>
-                <span className='font-medieval text-3xl text-[#d8b45f]'>0{featureKeys.indexOf(key) + 1}</span>
-                <h3 className='mt-6 text-xl font-semibold text-white'>{t.features[key].title}</h3>
-                <p className='mt-4 text-sm leading-7 text-white/66'>{t.features[key].description}</p>
+              <article
+                key={key}
+                className='group relative min-h-56 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] p-6 shadow-[0_16px_54px_rgba(0,0,0,0.18)] transition-colors duration-300 hover:border-[#d8b45f]/40 hover:bg-white/5'
+              >
+                <div className='absolute -top-16 -right-16 h-40 w-40 rounded-full bg-[#d8b45f]/8 blur-2xl transition-opacity duration-300 group-hover:opacity-100 opacity-60' />
+                <div className='relative flex items-center justify-between'>
+                  <span className='inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#d8b45f]/30 bg-[#d8b45f]/10 text-[#ead38a]'>
+                    <svg aria-hidden='true' viewBox='0 0 24 24' className='h-6 w-6 fill-current'>
+                      <path d={featureIcons[key]} />
+                    </svg>
+                  </span>
+                  <span className='font-medieval text-3xl text-[#d8b45f]/60'>0{featureKeys.indexOf(key) + 1}</span>
+                </div>
+                <h3 className='relative mt-6 text-xl font-semibold text-white'>{t.features[key].title}</h3>
+                <p className='relative mt-4 text-sm leading-7 text-white/66'>{t.features[key].description}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      {/* <section id='news' className='page-shell w-full py-16'>
-        <div className='page-grid'>
-          <div className='col-span-2 min-h-[20vh] md:col-span-6 lg:col-span-12' />
+      <section id='news' className='page-shell w-full py-16 md:py-24'>
+        <div className='page-grid gap-y-8'>
+          <div className='col-span-2 flex flex-col justify-between gap-4 md:col-span-6 md:flex-row md:items-end lg:col-span-12'>
+            <div>
+              <p className='text-sm tracking-[0.26em] text-[#d8b45f] uppercase'>{te.newsTag}</p>
+              <h2 className='font-medieval mt-4 text-4xl leading-tight text-white md:text-5xl'>{te.newsTitle}</h2>
+            </div>
+            <p className='max-w-sm text-sm leading-7 text-white/56'>{te.newsSubtitle}</p>
+          </div>
+
+          {newsState === 'loading' ? (
+            <div className='col-span-2 grid gap-4 md:col-span-6 md:grid-cols-3 lg:col-span-12'>
+              {[0, 1, 2].map((i) => (
+                <div key={i} className='min-h-64 animate-pulse rounded-2xl border border-white/8 bg-white/[0.03]' />
+              ))}
+            </div>
+          ) : news.length === 0 ? (
+            <div className='col-span-2 rounded-2xl border border-white/10 bg-white/[0.03] p-10 text-center md:col-span-6 lg:col-span-12'>
+              <p className='text-base text-white/60'>{newsState === 'error' ? te.newsError : te.newsEmpty}</p>
+            </div>
+          ) : (
+            <div className='col-span-2 grid gap-4 md:col-span-6 md:grid-cols-2 lg:col-span-12 lg:grid-cols-3'>
+              {news.slice(0, 6).map((item) => (
+                <article
+                  key={item.id}
+                  className='group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] transition-colors duration-300 hover:border-[#d8b45f]/40'
+                >
+                  <div className='relative aspect-video overflow-hidden bg-[#0a1220]'>
+                    {item.image_url ? (
+                      <img
+                        src={item.image_url}
+                        alt=''
+                        className='h-full w-full object-cover transition-transform duration-500 group-hover:scale-105'
+                        loading='lazy'
+                      />
+                    ) : (
+                      <div className='flex h-full w-full items-center justify-center bg-linear-to-br from-[#141c2c] to-[#0a1018]'>
+                        <span className='font-medieval text-3xl text-white/12'>Mu Syliums</span>
+                      </div>
+                    )}
+                    <span className='absolute top-3 left-3 rounded-full bg-black/55 px-3 py-1 text-[11px] tracking-[0.12em] text-white/80 uppercase backdrop-blur-sm'>
+                      {formatNewsDate(item.created_at, language)}
+                    </span>
+                  </div>
+                  <div className='flex flex-1 flex-col p-5'>
+                    <h3 className='text-lg font-semibold text-white'>{item.title}</h3>
+                    <p className='mt-3 line-clamp-4 text-sm leading-7 text-white/64'>{item.body}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
-      <section id='events' className='page-shell w-full py-16'>
+      <section className='page-shell w-full pb-4'>
         <div className='page-grid'>
-          <div className='col-span-2 min-h-[20vh] md:col-span-6 lg:col-span-12' />
+          <div className='col-span-2 grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/8 md:col-span-6 md:grid-cols-2 lg:col-span-12 lg:grid-cols-4'>
+            {te.infoItems.map((item) => (
+              <div key={item.label} className='bg-[#050a12] px-6 py-8 text-center'>
+                <p className='font-medieval text-3xl text-[#ead38a]'>{item.value}</p>
+                <p className='mt-2 text-xs leading-6 tracking-[0.1em] text-white/56 uppercase'>{item.label}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
-
-      <section id='ranking' className='page-shell w-full py-16'>
-        <div className='page-grid'>
-          <div className='col-span-2 min-h-[20vh] md:col-span-6 lg:col-span-12' />
-        </div>
-      </section> */}
 
       <section id='discord' className='page-shell w-full py-16 md:py-24'>
         <div className='page-grid items-center gap-y-8'>
