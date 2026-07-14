@@ -3,10 +3,20 @@ import background from './assets/background.png'
 import { useAuth } from './AuthContext.tsx'
 import ShopPage from './ShopPage.tsx'
 import AdminPage, { isStaff } from './AdminPage.tsx'
+import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './AuthFlows.tsx'
 import './App.css'
 
 type Language = 'es' | 'en'
-type RoutePath = '/' | '/register' | '/account' | '/buy-sylium' | '/downloads' | '/admin'
+type RoutePath =
+  | '/'
+  | '/register'
+  | '/account'
+  | '/buy-sylium'
+  | '/downloads'
+  | '/admin'
+  | '/forgot-password'
+  | '/reset-password'
+  | '/verify-email'
 
 type NavKey = 'home' | 'server' | 'downloads' | 'discord'
 type AccountKey = 'account' | 'buySylium' | 'logout'
@@ -79,6 +89,7 @@ const landingExtra = {
     toggleToRegister: 'No tenes cuenta? Crea una',
     toggleToLogin: 'Ya tenes cuenta? Inicia sesion',
     adminMenu: 'Admin',
+    forgotPassword: 'Olvidaste tu contrasena?',
   },
   en: {
     statusOnline: 'Server online',
@@ -106,6 +117,7 @@ const landingExtra = {
     toggleToRegister: "Don't have an account? Create one",
     toggleToLogin: 'Already have an account? Sign in',
     adminMenu: 'Admin',
+    forgotPassword: 'Forgot your password?',
   },
 } satisfies Record<
   Language,
@@ -130,6 +142,7 @@ const landingExtra = {
     toggleToRegister: string
     toggleToLogin: string
     adminMenu: string
+    forgotPassword: string
   }
 >
 
@@ -422,7 +435,17 @@ const accountItems: ReadonlyArray<{ key: AccountKey; href?: string }> = [
   { key: 'buySylium', href: '/buy-sylium' },
   { key: 'logout' },
 ]
-const routePaths = new Set<RoutePath>(['/', '/register', '/account', '/buy-sylium', '/downloads', '/admin'])
+const routePaths = new Set<RoutePath>([
+  '/',
+  '/register',
+  '/account',
+  '/buy-sylium',
+  '/downloads',
+  '/admin',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+])
 
 function getRoutePath(pathname: string): RoutePath {
   return routePaths.has(pathname as RoutePath) ? (pathname as RoutePath) : '/'
@@ -1010,6 +1033,15 @@ function App() {
                 >
                   {authMode === 'register' ? te.toggleToLogin : te.toggleToRegister}
                 </button>
+                {authMode === 'login' ? (
+                  <a
+                    href='/forgot-password'
+                    onClick={(event) => handleInternalLink(event, '/forgot-password')}
+                    className='mt-3 block text-center text-xs tracking-[0.08em] text-white/44 uppercase transition-colors hover:text-[#ead38a]'
+                  >
+                    {te.forgotPassword}
+                  </a>
+                ) : null}
                 {authMode === 'register' ? <p className='mt-4 text-xs leading-6 text-white/48'>{t.loginNote}</p> : null}
               </form>
             </div>
@@ -1109,6 +1141,36 @@ function App() {
           accessToken={user?.accessToken ?? null}
           onLoginClick={handleLoginClick}
         />
+        {siteFooter}
+    </main>
+    )
+  }
+
+  if (route === '/forgot-password') {
+    return (
+      <main className='min-h-screen bg-[#02040a] text-white'>
+        {navigationBar}
+        <ForgotPasswordPage language={language} onNavigate={navigate} />
+        {siteFooter}
+    </main>
+    )
+  }
+
+  if (route === '/reset-password') {
+    return (
+      <main className='min-h-screen bg-[#02040a] text-white'>
+        {navigationBar}
+        <ResetPasswordPage language={language} onNavigate={navigate} />
+        {siteFooter}
+    </main>
+    )
+  }
+
+  if (route === '/verify-email') {
+    return (
+      <main className='min-h-screen bg-[#02040a] text-white'>
+        {navigationBar}
+        <VerifyEmailPage language={language} onNavigate={navigate} />
         {siteFooter}
     </main>
     )
