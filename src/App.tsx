@@ -429,6 +429,8 @@ const navItems: ReadonlyArray<{ key: NavKey; href: string }> = [
 
 const featureKeys: ReadonlyArray<FeatureKey> = ['classic', 'fair', 'community']
 const downloadKeys: ReadonlyArray<DownloadKey> = ['client', 'launcher']
+// El launcher ES el instalador: baja e instala el cliente (29 GB) y lo mantiene actualizado.
+const launcherDownloadUrl = 'https://cdn.musyliums.com/launcher/MuSyliums-Setup.exe'
 
 const accountItems: ReadonlyArray<{ key: AccountKey; href?: string }> = [
   { key: 'account', href: '/account' },
@@ -1201,7 +1203,7 @@ function App() {
                       <p className='text-xs tracking-[0.16em] text-[#d8b45f] uppercase'>{download.meta}</p>
                       <h3 className='mt-2 text-xl font-semibold'>{download.title}</h3>
                       <p className='mt-2 text-sm leading-6 text-white/62'>{download.description}</p>
-                      <a href={key === 'support' ? '/#discord' : '/downloads'} onClick={(event) => handleInternalLink(event, key === 'support' ? '/#discord' : '/downloads')} className='mt-5 inline-flex min-h-11 items-center justify-center rounded-full border border-white/12 bg-white/6 px-5 text-xs tracking-[0.14em] text-white uppercase transition-colors hover:bg-white/10'>
+                      <a href={launcherDownloadUrl} className='mt-5 inline-flex min-h-11 items-center justify-center rounded-full bg-linear-to-r from-[#e5c977] via-[#f1db95] to-[#b98a31] px-5 text-xs font-semibold tracking-[0.14em] text-[#1d1403] uppercase transition-transform hover:scale-[1.02]'>
                         {download.action}
                       </a>
                     </article>
